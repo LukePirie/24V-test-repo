@@ -71,7 +71,7 @@
     <div class="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl p-6 md:p-10" id="pdf-container">
 
         <div class="flex items-center mb-6 border-b pb-4">
-            <img src="https://via.placeholder.com/100x80?text=REVOV+Logo" alt="REVOV Logo" class="h-20 w-auto object-contain mr-6">
+            <img src="REVOV-TM-Logo-home.webp" alt="REVOV Logo" class="h-20 w-auto object-contain mr-6">
             <h1 class="text-3xl font-bold text-gray-800">24V Battery Assessment Report</h1>
         </div>
 
@@ -276,6 +276,25 @@
             cell: '3. Cell Overview',
             bms: '4. BMS History'
         };
+        
+        // FIX for broken button: Re-introduce the addImg function placeholder
+        const addImg = (title, data) => {
+            if(data) {
+                // Keep the content commented out to isolate the PDF issue
+                /*
+                const appendixDiv = document.querySelector('#pdf-clone #image-appendix');
+                appendixDiv.innerHTML += `
+                    <div style="page-break-before: always; padding-top: 30px; font-family: 'Inter', sans-serif;">
+                        <div style="margin-bottom: 50px; text-align: center; page-break-inside: avoid;">
+                            <div style="background:#333; color:#fff; padding: 10px 8px; font-weight:bold; margin-bottom:15px; font-size: 14pt; border-radius: 5px;">${title}</div>
+                            <img src="${data}" style="max-width: 95%; height: auto; max-height: 9.5in; border: 3px solid #ccc; display: block; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" crossorigin="anonymous">
+                        </div>
+                    </div>
+                `;
+                appendixDiv.style.display = 'block';
+                */
+            }
+        };
 
         // IMAGE HANDLING
         function setupImageInput(inputId, previewId, key) {
@@ -439,29 +458,15 @@
             pdfContent.querySelector('#capacity_summary').innerHTML = originalCapacitySummary;
 
 
-            // 2. BUILD THE IMAGE APPENDIX CONTENT (TEMPORARILY COMMENTED OUT FOR BLANK PDF DEBUGGING)
+            // 2. BUILD THE IMAGE APPENDIX CONTENT 
+            // This is still disabled to confirm the main content generates correctly.
             const appendixDiv = pdfContent.querySelector('#image-appendix');
-            appendixDiv.style.display = 'none'; // Ensure it's hidden initially
+            appendixDiv.style.display = 'none'; 
 
             /*
             // RE-ENABLE THIS SECTION IF THE MAIN CONTENT GENERATES CORRECTLY
             const imageKeys = ['battery', 'rating', 'cell', 'bms'];
 
-            // Function to add images to the appendix
-            const addImg = (title, data) => {
-                if(data) {
-                    appendixDiv.innerHTML += `
-                        <div style="page-break-before: always; padding-top: 30px; font-family: 'Inter', sans-serif;">
-                            <div style="margin-bottom: 50px; text-align: center; page-break-inside: avoid;">
-                                <div style="background:#333; color:#fff; padding: 10px 8px; font-weight:bold; margin-bottom:15px; font-size: 14pt; border-radius: 5px;">${title}</div>
-                                <img src="${data}" style="max-width: 95%; height: auto; max-height: 9.5in; border: 3px solid #ccc; display: block; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" crossorigin="anonymous">
-                            </div>
-                        </div>
-                    `;
-                    appendixDiv.style.display = 'block'; // Show the appendix div if we have images
-                }
-            };
-            
             imageKeys.forEach(key => {
                 addImg(imageTitles[key], images[key]);
             });
@@ -489,7 +494,7 @@
                 console.error("PDF generation error:", error);
                 // Fail gracefully in the UI
                 document.getElementById('loading_spinner').classList.add('hidden');
-                statusDiv.querySelector('span').innerText = "Error generating PDF. Check console for details. (Possible image/CORS issue)";
+                statusDiv.querySelector('span').innerText = "Error generating PDF. Check console for details.";
                 statusDiv.classList.remove('bg-indigo-100', 'text-indigo-700');
                 statusDiv.classList.add('bg-red-100', 'text-red-700');
             });
