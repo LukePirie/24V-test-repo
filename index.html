@@ -38,12 +38,22 @@
         .pdf-mode .score-button,
         .pdf-mode .file-input,
         .pdf-mode .preview-box,
-        .pdf-mode input[type="radio"] + span, /* Hides the label text next to radio */
+        /* FIX: Correctly hide the radio button itself */
+        .pdf-mode input[type="radio"], 
         .pdf-mode #status_message,
         .pdf-mode .test-result-section label,
         .pdf-mode #overall_result label,
         .pdf-mode input[readonly] {
             display: none !important;
+        }
+        
+        /* FIX: Ensures the visible label text is not hidden in the PDF for radio buttons */
+        /* It was using input[type="radio"] + span which hid the visible text. This is now handled in JS by replacing the radio with text. */
+        
+        /* Ensure the replaced spans maintain layout */
+        .pdf-mode .input-replacement {
+            display: block; 
+            min-height: 1.5rem; /* Ensure minimal height for layout */
         }
     </style>
 </head>
@@ -172,7 +182,7 @@
                     0.2C Capacity Delivered: 0.0 Ah
                 </div>
             </div>
-
+            
             <div class="report-section">
                 <h2 class="text-2xl font-semibold text-indigo-700 mb-4">5. Summary & Evaluation</h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -301,6 +311,7 @@
                 }
             });
 
+            // Auto-select overall result
             if(total >= 5) {
                 const p = document.querySelector('input[name="overall_result_radio"][value="PASS"]');
                 if(p) p.checked = true;
@@ -315,6 +326,7 @@
                 const parent = this.parentNode;
                 parent.querySelectorAll('.score-button').forEach(b => b.classList.remove('selected-score', 'ring-2'));
                 this.classList.add('selected-score', 'ring-2');
+                this.classList.add('ring-indigo-500'); // Add ring for visibility
                 parent.querySelector('input[type="hidden"]').value = this.getAttribute('data-score');
                 updateScoreSummary();
             });
@@ -339,12 +351,14 @@
         document.getElementById('nominal_ah').addEventListener('input', calcCap);
 
 
-        // --- FINAL PROFESSIONAL PDF GENERATION LOGIC ---
+        // --- FINAL PROFESSIONAL PDF GENERATION LOGIC (FIXED) ---
         function generateCleanPDF() {
             const statusDiv = document.getElementById('status_message');
             statusDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700');
             statusDiv.classList.add('bg-indigo-100', 'text-indigo-700');
             statusDiv.querySelector('span').innerText = "Generating PDF...";
+            document.getElementById('loading_spinner').classList.remove('hidden');
+
             const container = document.getElementById('report-content');
             const serialNumber = document.getElementById('serial_number').value || 'Unknown';
 
@@ -352,7 +366,7 @@
             const pdfContent = container.cloneNode(true);
             pdfContent.id = 'pdf-clone';
             
-            // CRITICAL FIX: Move off-screen instead of setting visibility: hidden
+            // Move off-screen instead of setting visibility: hidden
             pdfContent.style.position = 'fixed';
             pdfContent.style.left = '-9999px';
             pdfContent.style.top = '0';
@@ -366,13 +380,14 @@
                     value = input.options[input.selectedIndex].text;
                 }
                 
-                // Replace the input/textarea/select with a styled span containing the value
+                // FIX: Create a span to replace the input/textarea/select
                 const valueSpan = document.createElement('span');
                 valueSpan.textContent = value || 'N/A';
+                valueSpan.className = 'input-replacement'; // Added class for easier styling and layout maintenance
                 valueSpan.style.color = '#1f2937';
                 valueSpan.style.fontWeight = 'bold';
-                valueSpan.style.display = 'block'; // Maintain layout
-
+                
+                // IMPORTANT: Replace the element in the clone
                 input.parentNode.replaceChild(valueSpan, input);
             });
 
@@ -380,11 +395,12 @@
             pdfContent.querySelectorAll('.score-row').forEach(row => {
                 const scoreDiv = row.querySelector('[data-category]');
                 const scoreInputName = scoreDiv.getAttribute('data-category') + '_score_input';
-                const hiddenScoreInput = row.querySelector(`input[name="${scoreInputName}"]`);
+                const hiddenScoreInput = document.querySelector(`input[name="${scoreInputName}"]`); // Read from original DOM
                 const scoreValue = hiddenScoreInput ? hiddenScoreInput.value : '0';
                 
                 let scoreText = 'Poor'; 
-                const selectedButton = row.querySelector(`.score-button[data-score="${scoreValue}"]`);
+                // Find the text from the original document's selected button
+                const selectedButton = document.querySelector(`.score-button[data-category="${scoreDiv.getAttribute('data-category')}"][data-score="${scoreValue}"]`);
                 if (selectedButton) {
                     scoreText = selectedButton.innerText.replace(/\s\(\d\)/, '');
                 }
@@ -395,9 +411,13 @@
                 scoreDiv.innerHTML = `<span style="font-weight: bold; color: ${scoreColor}; font-size: 0.75rem;">${scoreText} (${scoreValue})</span>`;
             });
             
-            // C. Replace Pass/Fail radio buttons with final result text
+            // C. Display Pass/Fail results as text (fixes the blank space from hiding labels)
             pdfContent.querySelectorAll('.test-result-section, #overall_result .flex.space-x-4').forEach(container => {
-                const checkedRadio = container.querySelector('input[type="radio"]:checked');
+                // Get the checked radio button's value from the *original* form
+                const radioName = container.querySelector('input[type="radio"]')?.name;
+                if (!radioName) return;
+                
+                const checkedRadio = document.querySelector(`input[name="${radioName}"]:checked`);
                 
                 if (checkedRadio) {
                     const resultValue = checkedRadio.value;
@@ -412,6 +432,12 @@
                     }
                 }
             });
+
+
+            // D. Get the capacity summary (it's dynamic text, so just ensure it's up to date)
+            const originalCapacitySummary = document.getElementById('capacity_summary').innerHTML;
+            pdfContent.querySelector('#capacity_summary').innerHTML = originalCapacitySummary;
+
 
             // 2. BUILD THE IMAGE APPENDIX CONTENT
             const appendixDiv = document.getElementById('image-appendix');
@@ -457,17 +483,25 @@
             html2pdf().set(opt).from(pdfContent).save().then(() => {
                 // Clean up the clone and status message
                 pdfContent.remove();
+                document.getElementById('loading_spinner').classList.add('hidden');
                 statusDiv.classList.add('hidden');
             }).catch(error => {
                 console.error("PDF generation error:", error);
                 // Fail gracefully in the UI
+                document.getElementById('loading_spinner').classList.add('hidden');
                 statusDiv.querySelector('span').innerText = "Error generating PDF. Please ensure all required fields are filled and try again.";
                 statusDiv.classList.remove('bg-indigo-100', 'text-indigo-700');
                 statusDiv.classList.add('bg-red-100', 'text-red-700');
-                // Ensure clone is removed even on error
-                pdfContent.remove();
             });
         }
+        
+        // Initial setup on load
+        document.addEventListener('DOMContentLoaded', () => {
+             // Set default date to today
+            document.getElementById('assessment_date').valueAsDate = new Date();
+            updateScoreSummary(); // Calculate initial scores
+            calcCap(); // Calculate initial capacity
+        });
     </script>
 </body>
 </html>
