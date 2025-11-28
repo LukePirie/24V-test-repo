@@ -5,10 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>24V Battery Assessment Report Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
     <style>
-        /* REVERTED CSS: Back to original structure */
+        /* BASE STYLES */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
         .report-section { border-bottom: 1px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 1.5rem; }
@@ -17,52 +19,16 @@
         .selected-score { outline: 3px solid #4f46e5; outline-offset: 1px; }
         .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-top: 4px solid #fff; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        /* --- PDF GENERATION STYLES (CRITICAL FIXES ONLY) --- */
+        .custom-radio-group input[type="radio"] { accent-color: currentColor; }
+        
+        /* PDF-SPECIFIC STYLES (Use simple classes/ids for reliable rendering) */
+        /* IMPORTANT: This class is applied to the main container before generating the PDF */
         .pdf-mode {
-            /* Fix 1: Force a white background for the cloned container */
+             /* Force white background, which is critical for PDF rendering */
             background-color: white !important;
-            /* Fix 2: Ensure all content is visible and nothing is clipped */
-            overflow: visible !important; 
-            /* Reset box shadows that can sometimes interfere */
-            box-shadow: none !important; 
+            padding: 20px; /* Add some padding for the PDF edges */
         }
-        
-        .pdf-mode input:not([type="radio"]):not([type="file"]):not([type="hidden"]):not([readonly]), 
-        .pdf-mode textarea,
-        .pdf-mode select {
-            border: none !important;
-            box-shadow: none !important;
-            background-color: transparent !important;
-            padding-left: 0 !important;
-            padding-right: 0 !important;
-            color: #1f2937 !important; 
-            font-weight: bold !important;
-            -webkit-appearance: none !important; 
-            -moz-appearance: none !important;
-            appearance: none !important;
-        }
-        
-        /* Ensures replaced span maintains block layout and spacing */
-        .pdf-mode label > .input-replacement,
-        .pdf-mode label > span:last-child {
-            display: block !important;
-            margin-top: 0.25rem; 
-        }
-        
-        .pdf-mode #capacity_summary b {
-            font-weight: bold; 
-        }
-
-        /* Hide all interactive elements in PDF mode */
-        .pdf-mode .score-button,
-        .pdf-mode .file-input,
-        .pdf-mode .preview-box,
-        .pdf-mode input[type="radio"], 
-        .pdf-mode #status_message,
-        .pdf-mode .test-result-section label,
-        .pdf-mode #overall_result label,
-        .pdf-mode input[readonly] {
+        .pdf-mode .hide-on-pdf {
             display: none !important;
         }
     </style>
@@ -71,276 +37,421 @@
 
     <div class="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl p-6 md:p-10" id="pdf-container">
 
-        <div id="content-to-capture"> 
+        <div class="flex items-center mb-6 border-b pb-4">
+            <img src="REVOV-TM-Logo-home.webp" alt="REVOV Logo" class="h-20 w-auto object-contain mr-6">
+            <h1 class="text-3xl font-bold text-gray-800">24V Battery Assessment Report</h1>
+        </div>
 
-            <div class="flex items-center mb-6 border-b pb-4">
-                <img src="REVOV-TM-Logo-home.webp" alt="REVOV Logo" class="h-20 w-auto object-contain mr-6">
-                <h1 class="text-3xl font-bold text-gray-800">24V Battery Assessment Report</h1>
+        <p class="text-gray-600 mb-8 hide-on-pdf">Fill out the details below and click "Download PDF" to save the report.</p>
+
+        <div id="status_message" class="mt-4 mb-4 p-3 hidden rounded-lg text-sm transition-all duration-300 flex items-center justify-between">
+            <span></span>
+            <div id="loading_spinner" class="spinner hidden ml-4"></div>
+        </div>
+
+        <div id="report-content" class="space-y-8"> 
+
+            <div class="report-section">
+                <h2 class="text-2xl font-semibold text-indigo-700 mb-4">1. Identification & Rating</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label class="block">
+                        <span class="text-gray-700">Assessment Date</span>
+                        <input type="date" id="assessment_date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium" required>
+                    </label>
+                    <label class="block">
+                        <span class="text-gray-700">Assessor Name</span>
+                        <input type="text" id="assessor_name" placeholder="John Doe" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium" required>
+                    </label>
+                    <label class="block md:col-span-2">
+                        <span class="text-gray-700 font-bold">Battery Serial Number (S/N)</span>
+                        <input type="text" id="serial_number" placeholder="BATT-24V-00123" class="mt-1 block w-full rounded-md border-indigo-500 shadow-sm p-2 text-lg font-mono font-bold text-black" required>
+                    </label>
+                    <label class="block">
+                        <span class="text-gray-700">Battery Type</span>
+                        <input type="text" id="battery_type" placeholder="LiFePO4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium">
+                    </label>
+                    <label class="block">
+                        <span class="text-gray-700 font-bold">Nominal Ah Capacity (Ah)</span>
+                        <input type="number" step="1" id="nominal_ah" placeholder="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium" required>
+                    </label>
+                </div>
+
+                <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-800 mb-2">Battery Physical Photo</h3>
+                        <input type="file" id="photo_battery" accept="image/*" capture="environment" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 hide-on-pdf">
+                        <div id="preview_battery" class="mt-3 h-32 w-full bg-gray-100 rounded-lg flex items-center justify-center text-sm text-gray-400 overflow-hidden border border-gray-200">
+                            <span class="text-gray-400">Image Preview</span>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-800 mb-2">Rating Screenshot (e.g., BMS App)</h3>
+                        <input type="file" id="photo_rating" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 hide-on-pdf">
+                        <div id="preview_rating" class="mt-3 h-32 w-full bg-gray-100 rounded-lg flex items-center justify-center text-sm text-gray-400 overflow-hidden border border-gray-200">
+                             <span class="text-gray-400">Image Preview</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <p class="text-gray-600 mb-8">Fill out the details below and click "Download PDF".</p>
+            <div class="report-section">
+                <h2 class="text-2xl font-semibold text-indigo-700 mb-4">2. Electrical Consistency Analysis</h2>
+                <div class="grid grid-cols-3 gap-4 font-semibold text-sm mb-2 p-2 border-b border-gray-200">
+                    <p>Metric</p>
+                    <p class="text-center">Value</p>
+                    <p class="text-right">Score</p>
+                </div>
 
-            <div id="status_message" class="mt-4 mb-4 p-3 hidden rounded-lg text-sm transition-all duration-300 flex items-center justify-between bg-indigo-100 text-indigo-700">
-                <span></span>
-                <div id="loading_spinner" class="spinner hidden ml-4"></div>
+                <div class="grid grid-cols-3 gap-4 items-center p-3 bg-gray-50 rounded-lg mb-4 score-row">
+                    <p class="font-medium">Open-Circuit Voltage (OCV) [V]</p>
+                    <input type="number" step="0.01" id="ocv_value" placeholder="26.5" class="rounded-md border-gray-300 shadow-sm p-1 text-sm mx-auto text-center w-24 font-bold text-black">
+                    <div class="flex space-x-2 justify-end hide-on-pdf" data-category="ocv">
+                        <button type="button" data-score="2" class="score-button bg-green-200 text-green-800 p-2 rounded-lg text-xs selected-score ring-2 ring-indigo-500">Good (2)</button>
+                        <button type="button" data-score="1" class="score-button bg-yellow-200 text-yellow-800 p-2 rounded-lg text-xs">Acceptable (1)</button>
+                        <button type="button" data-score="0" class="score-button bg-red-200 text-red-800 p-2 rounded-lg text-xs">Poor (0)</button>
+                        <input type="hidden" name="ocv_score_input" value="2">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4 items-center p-3 bg-gray-50 rounded-lg score-row">
+                    <p class="font-medium">Voltage Spread Across Cells [mV]</p>
+                    <input type="number" id="volt_spread_value" placeholder="15" class="rounded-md border-gray-300 shadow-sm p-1 text-sm mx-auto text-center w-24 font-bold text-black">
+                    <div class="flex space-x-2 justify-end hide-on-pdf" data-category="volt_spread">
+                        <button type="button" data-score="2" class="score-button bg-green-200 text-green-800 p-2 rounded-lg text-xs selected-score ring-2 ring-indigo-500">Good (2)</button>
+                        <button type="button" data-score="1" class="score-button bg-yellow-200 text-yellow-800 p-2 rounded-lg text-xs">Acceptable (1)</button>
+                        <button type="button" data-score="0" class="score-button bg-red-200 text-red-800 p-2 rounded-lg text-xs">Poor (0)</button>
+                        <input type="hidden" name="volt_spread_score_input" value="2">
+                    </div>
+                </div>
             </div>
 
-            <div id="report-content" class="space-y-8">
-                <div class="report-section">
-                    <h2 class="text-2xl font-semibold text-indigo-700 mb-4">1. Identification & Rating</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <label class="block"><span class="text-gray-700">Assessment Date</span><input type="date" id="assessment_date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium"></label>
-                        <label class="block"><span class="text-gray-700">Assessor Name</span><input type="text" id="assessor_name" placeholder="John Doe" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium"></label>
-                        <label class="block md:col-span-2"><span class="text-gray-700 font-bold">Battery Serial Number (S/N)</span><input type="text" id="serial_number" placeholder="BATT-24V-00123" class="mt-1 block w-full rounded-md border-indigo-500 shadow-sm p-2 text-lg font-mono font-bold text-black"></label>
-                        <label class="block"><span class="text-gray-700">Battery Type</span><input type="text" id="battery_type" placeholder="LiFePO4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium"></label>
-                        <label class="block"><span class="text-gray-700 font-bold">Nominal Ah Capacity (Ah)</span><input type="number" step="1" id="nominal_ah" placeholder="100" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium"></label>
-                    </div>
+            <div class="report-section">
+                <h2 class="text-2xl font-semibold text-indigo-700 mb-6">3. Charge & Discharge Tests</h2>
 
-                    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-800 mb-2">1. Battery Physical Photo</h3>
-                            <input type="file" id="photo_battery" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-indigo-50 file:text-indigo-700 file-input">
-                            <div id="preview_battery" class="mt-3 h-32 w-full bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border preview-box"><span>Preview</span></div>
+                <div class="mb-6 bg-[#E9E8FF] bg-opacity-30 border border-[#928DFF] rounded-xl overflow-hidden shadow-sm">
+                    <div class="p-4 flex items-center bg-[#E9E8FF] bg-opacity-50 border-b border-[#928DFF] border-opacity-30">
+                        <span class="bg-[#928DFF] text-white font-bold py-1 px-3 rounded text-sm mr-3">0.2C</span>
+                        <h3 class="text-lg font-bold text-[#5a56d1]">Standard Capacity Testing</h3>
+                    </div>
+                    
+                    <div class="p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                            <div class="md:col-span-1">
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Charge Volt (V)</label>
+                                <input type="number" step="0.1" id="charge_volt_02c" class="block w-full rounded border-gray-300 shadow-sm p-2 text-black font-bold">
+                            </div>
+                            <div class="md:col-span-1">
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Charge Current (A)</label>
+                                <input type="number" step="0.1" id="charge_current_02c" class="block w-full rounded border-gray-300 shadow-sm p-2 text-black font-bold">
+                            </div>
+                            <div class="md:col-span-1">
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Disch. Current (A)</label>
+                                <input type="number" step="0.1" id="disch_current_02c" class="block w-full rounded border-gray-300 shadow-sm p-2 text-black font-bold">
+                            </div>
+                            <div class="md:col-span-1">
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Ah Delivered</label>
+                                <input type="number" step="0.1" id="ah_delivered_02c" class="block w-full rounded border-gray-300 shadow-sm p-2 text-black font-bold">
+                            </div>
                         </div>
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-800 mb-2">2. Rating Screenshot</h3>
-                            <input type="file" id="photo_rating" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-indigo-50 file:text-indigo-700 file-input">
-                            <div id="preview_rating" class="mt-3 h-32 w-full bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border preview-box"><span>Preview</span></div>
-                        </div>
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-800 mb-2">3. Cell Overview</h3>
-                            <input type="file" id="photo_cell" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-indigo-50 file:text-indigo-700 file-input">
-                            <div id="preview_cell" class="mt-3 h-32 w-full bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border preview-box"><span>Preview</span></div>
-                        </div>
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-800 mb-2">4. BMS History</h3>
-                            <input type="file" id="photo_bms" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-indigo-50 file:text-indigo-700 file-input">
-                            <div id="preview_bms" class="mt-3 h-32 w-full bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border preview-box"><span>Preview</span></div>
+                        
+                        <div class="flex items-center space-x-4 border-t border-gray-200 pt-3">
+                            <span class="text-sm font-semibold text-gray-600">0.2C Test Result:</span>
+                            <div class="flex space-x-4 custom-radio-group hide-on-pdf" data-category="charge_result_02c">
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="radio" name="result_02c" value="PASS" class="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300">
+                                    <span class="ml-2 text-green-700 font-bold text-sm">PASS</span>
+                                </label>
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="radio" name="result_02c" value="FAIL" class="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300">
+                                    <span class="ml-2 text-red-700 font-bold text-sm">FAIL</span>
+                                </label>
+                                <input type="hidden" id="charge_score_input" value="0">
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="report-section">
-                    <h2 class="text-2xl font-semibold text-indigo-700 mb-4">2. Electrical Consistency Analysis</h2>
-                    <div class="grid grid-cols-3 gap-4 font-semibold text-sm mb-2 p-2 border-b border-gray-200">
-                        <p>Metric</p><p class="text-center">Value</p><p class="text-right">Score</p>
+                <div class="mb-6 bg-[#FFF3E6] border border-[#EEA049] rounded-xl overflow-hidden shadow-sm">
+                    <div class="p-4 flex items-center bg-[#FFF3E6] border-b border-[#EEA049] border-opacity-30">
+                        <span class="bg-[#EEA049] text-white font-bold py-1 px-3 rounded text-sm mr-3">0.5C</span>
+                        <h3 class="text-lg font-bold text-[#d4832d]">MAX Charge/Discharge Testing</h3>
                     </div>
-
-                    <div class="grid grid-cols-3 gap-4 items-center p-3 bg-gray-50 rounded-lg mb-4 score-row">
-                        <p class="font-medium">Open-Circuit Voltage (OCV) [V]</p>
-                        <input type="number" step="0.01" id="ocv_value" class="rounded-md border-gray-300 shadow-sm p-1 text-sm mx-auto text-center w-24 font-bold text-black">
-                        <div class="flex space-x-2 justify-end" data-category="ocv">
-                            <button type="button" data-score="2" class="score-button bg-green-200 text-green-800 p-2 rounded-lg text-xs">Good (2)</button>
-                            <button type="button" data-score="1" class="score-button bg-yellow-200 text-yellow-800 p-2 rounded-lg text-xs">Acceptable (1)</button>
-                            <button type="button" data-score="0" class="score-button bg-red-200 text-red-800 p-2 rounded-lg text-xs">Poor (0)</button>
-                            <input type="hidden" name="ocv_score_input" value="0">
+                    
+                    <div class="p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                            <div class="md:col-span-1">
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Max Charge (A)</label>
+                                <input type="number" step="0.1" id="max_charge_05c" class="block w-full rounded border-gray-300 shadow-sm p-2 text-black font-bold">
+                            </div>
+                            <div class="md:col-span-1">
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Max Disch. (A)</label>
+                                <input type="number" step="0.1" id="max_disch_05c" class="block w-full rounded border-gray-300 shadow-sm p-2 text-black font-bold">
+                            </div>
+                            <div class="md:col-span-1">
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Temp Rise (°C)</label>
+                                <input type="number" step="0.1" id="temp_rise_05c" class="block w-full rounded border-gray-300 shadow-sm p-2 text-black font-bold">
+                            </div>
+                            <div class="md:col-span-1">
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Stability</label>
+                                <select id="stability_05c" class="block w-full rounded border-gray-300 shadow-sm p-2 text-black font-bold bg-white">
+                                    <option value="">Select...</option>
+                                    <option value="Stable">Stable</option>
+                                    <option value="Unstable">Unstable</option>
+                                </select>
+                            </div>
                         </div>
-                    </div>
-
-                    <div class="grid grid-cols-3 gap-4 items-center p-3 bg-gray-50 rounded-lg score-row">
-                        <p class="font-medium">Voltage Spread Across Cells [mV]</p>
-                        <input type="number" id="volt_spread_value" class="rounded-md border-gray-300 shadow-sm p-1 text-sm mx-auto text-center w-24 font-bold text-black">
-                        <div class="flex space-x-2 justify-end" data-category="volt_spread">
-                            <button type="button" data-score="2" class="score-button bg-green-200 text-green-800 p-2 rounded-lg text-xs">Good (2)</button>
-                            <button type="button" data-score="1" class="score-button bg-yellow-200 text-yellow-800 p-2 rounded-lg text-xs">Acceptable (1)</button>
-                            <button type="button" data-score="0" class="score-button bg-red-200 text-red-800 p-2 rounded-lg text-xs">Poor (0)</button>
-                            <input type="hidden" name="volt_spread_score_input" value="0">
+                        
+                        <div class="flex items-center space-x-4 border-t border-[#EEA049] border-opacity-20 pt-3">
+                            <span class="text-sm font-semibold text-gray-600">0.5C Test Result:</span>
+                            <div class="flex space-x-4 custom-radio-group hide-on-pdf" data-category="discharge_result_05c">
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="radio" name="result_05c" value="PASS" class="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300">
+                                    <span class="ml-2 text-green-700 font-bold text-sm">PASS</span>
+                                </label>
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="radio" name="result_05c" value="FAIL" class="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300">
+                                    <span class="ml-2 text-red-700 font-bold text-sm">FAIL</span>
+                                </label>
+                                <input type="hidden" id="discharge_score_input" value="0">
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="report-section">
-                    <h2 class="text-2xl font-semibold text-indigo-700 mb-6">3. Charge & Discharge Tests</h2>
-                    <div class="mb-6 bg-[#E9E8FF] bg-opacity-30 border border-[#928DFF] rounded-xl overflow-hidden shadow-sm">
-                        <div class="p-4 flex items-center bg-[#E9E8FF] bg-opacity-50 border-b border-[#928DFF] border-opacity-30">
-                            <span class="bg-[#928DFF] text-white font-bold py-1 px-3 rounded text-sm mr-3">0.2C</span>
-                            <h3 class="text-lg font-bold text-[#5a56d1]">Standard Capacity Testing</h3>
-                        </div>
-                        <div class="p-4">
-                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                                <div><label class="text-xs font-semibold text-gray-500">Charge Volt (V)</label><input type="number" id="charge_volt_02c" class="block w-full border-gray-300 p-2 text-black font-bold"></div>
-                                <div><label class="text-xs font-semibold text-gray-500">Charge Current (A)</label><input type="number" id="charge_current_02c" class="block w-full border-gray-300 p-2 text-black font-bold"></div>
-                                <div><label class="text-xs font-semibold text-gray-500">Disch. Current (A)</label><input type="number" id="disch_current_02c" class="block w-full border-gray-300 p-2 text-black font-bold"></div>
-                                <div><label class="text-xs font-semibold text-gray-500">Ah Delivered</label><input type="number" id="ah_delivered_02c" class="block w-full border-gray-300 p-2 text-black font-bold"></div>
+                <div id="capacity_summary" class="p-4 bg-slate-100 border-l-4 border-slate-500 rounded font-medium text-gray-800">
+                    0.2C Capacity Delivered: <span class="font-bold text-blue-600">0.0 Ah</span> of 1.0 Ah <span class="text-gray-500">(0.00%)</span>
+                </div>
+            </div>
+
+            <div class="report-section">
+                <h2 class="text-2xl font-semibold text-indigo-700 mb-4">5. Summary & Evaluation</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-xl font-medium text-gray-800 mb-3">5.1 Automatic Scoring</h3>
+                        <div class="bg-gray-100 p-4 rounded-lg">
+                            <div class="flex justify-between font-semibold border-b pb-1 mb-1 text-sm text-gray-600">
+                                <span>Category</span>
+                                <span>Score (Max)</span>
                             </div>
-                            <div class="flex items-center space-x-4 border-t pt-3 test-result-section">
-                                <span class="text-sm font-semibold">Result:</span>
-                                <label><input type="radio" name="result_02c" value="PASS" class="mr-1"><span class="text-green-700 font-bold">PASS</span></label>
-                                <label><input type="radio" name="result_02c" value="FAIL" class="mr-1"><span class="text-red-700 font-bold">FAIL</span></label>
+                        
+                            <div class="flex justify-between py-1 items-center">
+                                <span>Voltage Consistency</span>
+                                <span id="score_voltage" class="font-mono text-black font-bold">4 / 4</span>
+                            </div>
+                        
+                            <div class="flex justify-between py-1 items-center">
+                                <span>Charge Test</span>
+                                <div class="flex items-center">
+                                    <input type="number" id="manual_score_charge" value="0" min="0" max="2" oninput="updateScoreSummary()" class="w-12 text-center rounded border-gray-300 shadow-sm p-1 text-sm font-bold text-black mr-1">
+                                    <span class="font-mono text-gray-600 font-bold">/ 2</span>
+                                </div>
+                            </div>
+                        
+                            <div class="flex justify-between py-1 items-center">
+                                <span>Discharge Test</span>
+                                <div class="flex items-center">
+                                     <input type="number" id="manual_score_discharge" value="0" min="0" max="2" oninput="updateScoreSummary()" class="w-12 text-center rounded border-gray-300 shadow-sm p-1 text-sm font-bold text-black mr-1">
+                                    <span class="font-mono text-gray-600 font-bold">/ 2</span>
+                                </div>
+                            </div>
+                        
+                            <div class="flex justify-between font-bold text-lg pt-2 border-t mt-2 text-indigo-700 items-center">
+                                <span>TOTAL SCORE</span>
+                                <span id="score_total" class="font-mono text-black font-bold">4 / 8</span>
                             </div>
                         </div>
                     </div>
 
-                    <div class="mb-6 bg-[#FFF3E6] border border-[#EEA049] rounded-xl overflow-hidden shadow-sm">
-                        <div class="p-4 flex items-center bg-[#FFF3E6] border-b border-[#EEA049] border-opacity-30">
-                            <span class="bg-[#EEA049] text-white font-bold py-1 px-3 rounded text-sm mr-3">0.5C</span>
-                            <h3 class="text-lg font-bold text-[#d4832d]">MAX Charge/Discharge</h3>
-                        </div>
-                        <div class="p-4">
-                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                                <div><label class="text-xs font-semibold text-gray-500">Max Charge (A)</label><input type="number" id="max_charge_05c" class="block w-full border-gray-300 p-2 text-black font-bold"></div>
-                                <div><label class="text-xs font-semibold text-gray-500">Max Disch (A)</label><input type="number" id="max_disch_05c" class="block w-full border-gray-300 p-2 text-black font-bold"></div>
-                                <div><label class="text-xs font-semibold text-gray-500">Temp Rise (°C)</label><input type="number" id="temp_rise_05c" class="block w-full border-gray-300 p-2 text-black font-bold"></div>
-                                <div><label class="text-xs font-semibold text-gray-500">Stability</label><select id="stability_05c" class="block w-full border-gray-300 p-2 text-black font-bold"><option value="">Select...</option><option value="Stable">Stable</option><option value="Unstable">Unstable</option></select></div>
-                            </div>
-                            <div class="flex items-center space-x-4 border-t pt-3 test-result-section">
-                                <span class="text-sm font-semibold">Result:</span>
-                                <label><input type="radio" name="result_05c" value="PASS" class="mr-1"><span class="text-green-700 font-bold">PASS</span></label>
-                                <label><input type="radio" name="result_05c" value="FAIL" class="mr-1"><span class="text-red-700 font-bold">FAIL</span></label>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="capacity_summary" class="p-4 bg-slate-100 border-l-4 border-slate-500 rounded font-medium text-gray-800">
-                        0.2C Capacity Delivered: 0.0 Ah
-                    </div>
-                </div>
-                
-                <div class="report-section">
-                    <h2 class="text-2xl font-semibold text-indigo-700 mb-4">5. Summary & Evaluation</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div class="md:col-span-2">
-                            <div class="border border-gray-200 rounded-lg overflow-hidden">
-                                <div class="grid grid-cols-2 bg-gray-100 p-3 font-bold text-gray-700 border-b border-gray-200">
-                                    <span>Assessment Category</span>
-                                    <span class="text-right">Score / Max Score</span>
-                                </div>
-                                <div class="grid grid-cols-2 p-3 border-b border-gray-200">
-                                    <span>Voltage Consistency (OCV & Spread)</span>
-                                    <span id="score_voltage" class="font-bold text-right text-indigo-600">0 / 4</span>
-                                </div>
-                                <div class="grid grid-cols-2 p-3 border-b border-gray-200">
-                                    <span>0.2C Charge Test</span>
-                                    <span class="font-bold text-right text-indigo-600"><span id="manual_score_charge_display">0</span> / 2</span>
-                                    <input type="hidden" id="manual_score_charge" value="0">
-                                </div>
-                                <div class="grid grid-cols-2 p-3 border-b border-gray-200">
-                                    <span>0.5C Discharge Test</span>
-                                    <span class="font-bold text-right text-indigo-600"><span id="manual_score_discharge_display">0</span> / 2</span>
-                                    <input type="hidden" id="manual_score_discharge" value="0">
-                                </div>
-                                <div class="grid grid-cols-2 p-3 bg-indigo-50 font-extrabold text-xl text-indigo-800">
-                                    <span>TOTAL ASSESSMENT SCORE</span>
-                                    <span id="score_total" class="text-right">0 / 8</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
-                                <h3 class="text-lg font-bold text-gray-800 mb-3 border-b pb-2">Overall Conclusion</h3>
-                                <div class="flex items-center space-x-4 mb-4" id="overall_result">
-                                    <span class="font-bold text-gray-700">Final Result:</span>
-                                    <div class="flex space-x-4">
-                                        <label><input type="radio" name="overall_result_radio" value="PASS"><span class="ml-2 text-green-700 font-bold">PASS</span></label>
-                                        <label><input type="radio" name="overall_result_radio" value="FAIL"><span class="ml-2 text-red-700 font-bold">FAIL</span></label>
-                                    </div>
-                                </div>
-                                <div id="banding_list" class="space-y-2 text-sm">
-                                    <p class="font-bold text-gray-700">Scoring Banding:</p>
-                                    <div data-range="7-8" class="p-2 border rounded border-green-300 bg-green-50"><span class="font-semibold text-green-700">7-8:</span> Excellent Condition</div>
-                                    <div data-range="5-6" class="p-2 border rounded border-yellow-300 bg-yellow-50"><span class="font-semibold text-yellow-700">5-6:</span> Acceptable Performance</div>
-                                    <div data-range="0-4" class="p-2 border rounded border-red-300 bg-red-50"><span class="font-semibold text-red-700">0-4:</span> Poor Condition - Review Required</div>
-                                </div>
+                    <div>
+                        <h3 class="text-xl font-medium text-gray-800 mb-3">5.2 Performance Banding</h3>
+                        <ul id="banding_list" class="space-y-2 text-sm p-2 rounded-lg bg-gray-50">
+                            <li data-range="7-8" class="p-2 rounded-md transition-colors duration-150">
+                                <span class="font-semibold text-green-700">7 - 8 (Excellent):</span> Battery meets high-grade operational standards.
+                            </li>
+                            <li data-range="5-6" class="p-2 rounded-md transition-colors duration-150">
+                                <span class="font-semibold text-yellow-700">5 - 6 (Acceptable):</span> Battery is serviceable with minor deviations.
+                            </li>
+                            <li data-range="0-4" class="p-2 rounded-md transition-colors duration-150 bg-indigo-100 ring-2 ring-indigo-500">
+                                <span class="font-semibold text-red-700">0 - 4 (Poor):</span> Battery not compliant; rejection required.
+                            </li>
+                        </ul>
+                        <div class="mt-4 flex items-center space-x-6" id="overall_result">
+                            <span class="font-bold text-gray-700">Overall Result:</span>
+                            <div class="flex space-x-4 custom-radio-group hide-on-pdf">
+                                <label class="inline-flex items-center"><input type="radio" name="overall_result_radio" value="PASS" class="form-radio text-green-600"><span class="ml-2 text-green-700 font-bold">PASS</span></label>
+                                <label class="inline-flex items-center"><input type="radio" name="overall_result_radio" value="FAIL" checked class="form-radio text-red-600"><span class="ml-2 text-red-700 font-bold">FAIL</span></label>
                             </div>
                         </div>
                     </div>
-
-                    <label class="block mt-6"><span class="text-gray-700 font-medium">Reasoning:</span><textarea id="overall_reasoning" rows="3" class="mt-1 block w-full border-gray-300 rounded shadow-sm p-2"></textarea></label>
                 </div>
 
-                <div class="report-section">
-                    <h2 class="text-2xl font-semibold text-indigo-700 mb-4">6. Recommendations & Notes</h2>
-                    <label class="block mb-4"><span class="text-gray-700 font-medium">Suggested Actions:</span><textarea id="suggested_actions" rows="2" class="mt-1 block w-full border-gray-300 rounded shadow-sm p-2"></textarea></label>
-                    <label class="block"><span class="text-gray-700 font-medium">General Notes:</span><textarea id="general_notes" rows="2" class="mt-1 block w-full border-gray-300 rounded shadow-sm p-2"></textarea></label>
-                </div>
-                
-                <div id="image-appendix" style="display: none;">
-                    <div style="page-break-before: always;"></div>
-                    <h2 style="text-align:center; margin-bottom: 30px; border-bottom: 3px solid #333; font-size: 24pt; font-weight: bold; font-family: 'Inter', sans-serif; padding-top: 30px; color: #1f2937;">Appendix: Evidence Photos</h2>
-                </div>
+                <label class="block mt-6">
+                    <span class="text-gray-700 font-medium">Reasoning for Overall Result:</span>
+                    <textarea id="overall_reasoning" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium" placeholder="e.g., Passed all tests with minimal resistance spread."></textarea>
+                </label>
+            </div>
+
+            <div>
+                <h2 class="text-2xl font-semibold text-indigo-700 mb-4">6. Recommendations & Notes</h2>
+                <label class="block mb-4">
+                    <span class="text-gray-700 font-medium">Suggested Actions:</span>
+                    <textarea id="suggested_actions" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium" placeholder="e.g., Accept for service. Monitor resistance spread monthly."></textarea>
+                </label>
+                <label class="block">
+                    <span class="text-gray-700 font-medium">General Notes:</span>
+                    <textarea id="general_notes" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 text-black font-medium" placeholder="Any other relevant observations during testing."></textarea>
+                </label>
             </div>
             
-        </div> 
-
-        <div class="mt-8 pt-6 border-t border-gray-200">
-            <button onclick="generateCleanPDF()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg">Download PDF Report</button>
+             <div id="image-appendix" style="display:none; padding-top: 30px; page-break-before: always; text-align: center;">
+                 <h2 style="font-size: 24pt; font-weight: bold; margin-bottom: 20px;">Appendix: Evidence Photos</h2>
+            </div>
+        </div>
+        
+        <div class="mt-8 pt-6 border-t border-gray-200 hide-on-pdf">
+            <button onclick="generatePDF()" class="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition duration-150 ease-in-out flex items-center justify-center mx-auto" id="download_button">
+                Download PDF Report
+            </button>
         </div>
     </div>
 
     <script>
-        // GLOBALS FOR IMAGES
-        const images = {
-            battery: null,
-            rating: null,
-            cell: null, 
-            bms: null    
-        };
-        const imageTitles = {
-            battery: '1. Battery Physical Photo',
-            rating: '2. Rating Screenshot (BMS)',
-            cell: '3. Cell Overview',
-            bms: '4. BMS History'
-        };
+        // --- APP GLOBALS ---
+        let batteryPhotoDataUrl = null;
+        let ratingPhotoDataUrl = null;
         
-        const addImg = (title, data) => {
-            if(data) {
-                // Image embedding is still disabled for content debugging
-            }
-        };
+        // --- UI/UX AND LOGIC ---
 
-        // IMAGE HANDLING
-        function setupImageInput(inputId, previewId, key) {
+        function renderImagePreview(previewId, dataUrl) {
+            const preview = document.getElementById(previewId);
+            if (!preview) return;
+            
+            preview.innerHTML = '';
+            if (dataUrl) {
+                const img = document.createElement('img');
+                img.src = dataUrl;
+                img.className = 'w-full h-full object-cover';
+                preview.appendChild(img);
+            } else {
+                preview.innerHTML = '<span class="text-gray-400">Image Preview</span>';
+            }
+        }
+
+        function setupImageInput(inputId, previewId, dataUrlCallback) {
             const input = document.getElementById(inputId);
-            if(!input) return;
-            input.addEventListener('change', function(e) {
+            if (!input) return;
+            
+            input.addEventListener('change', function() {
                 if (this.files && this.files[0]) {
                     const reader = new FileReader();
-                    reader.onload = function(evt) {
-                        images[key] = evt.target.result;
-                        document.getElementById(previewId).innerHTML = `<img src="${evt.target.result}" class="w-full h-full object-cover">`;
-                    };
+                    reader.onload = function(e) {
+                        dataUrlCallback(e.target.result);
+                        renderImagePreview(previewId, e.target.result);
+                    }
                     reader.readAsDataURL(this.files[0]);
+                } else {
+                    dataUrlCallback(null);
+                    renderImagePreview(previewId, null);
                 }
             });
         }
-        setupImageInput('photo_battery', 'preview_battery', 'battery');
-        setupImageInput('photo_rating', 'preview_rating', 'rating');
-        setupImageInput('photo_cell', 'preview_cell', 'cell'); 
-        setupImageInput('photo_bms', 'preview_bms', 'bms');    
-
-        // SCORING AND LOGIC
-        function updateScoreSummary() {
-            const vOcv = parseInt(document.querySelector('input[name="ocv_score_input"]')?.value) || 0;
-            const vSpread = parseInt(document.querySelector('input[name="volt_spread_score_input"]')?.value) || 0;
-            const voltageTotal = vOcv + vSpread;
-            const chgScore = parseInt(document.getElementById('manual_score_charge')?.value) || 0;
-            const dischScore = parseInt(document.getElementById('manual_score_discharge')?.value) || 0;
-            const total = voltageTotal + chgScore + dischScore;
-
-            const setText = (id, txt) => { if(document.getElementById(id)) document.getElementById(id).innerText = txt; }
-            setText('score_voltage', `${voltageTotal} / 4`);
-            setText('manual_score_charge_display', `${chgScore}`);
-            setText('manual_score_discharge_display', `${dischScore}`);
-            setText('score_total', `${total} / 8`);
-
-            document.querySelectorAll('#banding_list div').forEach(div => {
-                div.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-200');
-                const range = div.getAttribute('data-range').split('-');
-                if (total >= parseInt(range[0]) && total <= parseInt(range[1])) {
-                    div.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-200');
-                }
-            });
-
-            // Auto-select overall result
-            if(total >= 5) {
-                const p = document.querySelector('input[name="overall_result_radio"][value="PASS"]');
-                if(p) p.checked = true;
+        
+        function showStatus(message, isError = false, showSpinner = false) {
+            const statusDiv = document.getElementById('status_message');
+            const spinner = document.getElementById('loading_spinner');
+            
+            if (!statusDiv || !spinner) return;
+            
+            // Reset classes
+            statusDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+            
+            if (isError) {
+                statusDiv.classList.add('bg-red-100', 'text-red-700');
+            } else if (showSpinner) {
+                statusDiv.classList.add('bg-blue-100', 'text-blue-700');
             } else {
-                const f = document.querySelector('input[name="overall_result_radio"][value="FAIL"]');
-                if(f) f.checked = true;
+                statusDiv.classList.add('bg-green-100', 'text-green-700');
+            }
+            
+            const messageSpan = statusDiv.querySelector('span');
+            if (messageSpan) messageSpan.textContent = message;
+            else statusDiv.textContent = message;
+
+            if (showSpinner) {
+                 statusDiv.classList.add('flex', 'items-center', 'justify-between');
+                 spinner.classList.remove('hidden');
+            } else {
+                 spinner.classList.add('hidden');
+                 statusDiv.classList.remove('flex', 'items-center', 'justify-between');
             }
         }
 
+        function updateCapacitySummary() {
+            const deliveredAh = parseFloat(document.getElementById('ah_delivered_02c')?.value) || 0;
+            const nominalAh = parseFloat(document.getElementById('nominal_ah')?.value) || 1;
+            let percentage = (deliveredAh / nominalAh) * 100;
+            percentage = isNaN(percentage) ? 0 : Math.min(100, percentage).toFixed(2);
+
+            const summaryElement = document.getElementById('capacity_summary');
+            if (summaryElement) {
+                summaryElement.innerHTML = `0.2C Capacity Delivered: <span class="text-blue-600 font-bold">${deliveredAh.toFixed(1)} Ah</span> of <span class="font-bold">${nominalAh.toFixed(1)} Ah</span> (<span class="text-gray-600">${percentage}%</span>)`;
+            }
+        }
+
+        function updateScoreSummary() {
+            // 1. Calculate Voltage Score (Automatic from Section 2)
+            const voltageOcv = parseInt(document.querySelector('input[name="ocv_score_input"]')?.value) || 0;
+            const voltageSpread = parseInt(document.querySelector('input[name="volt_spread_score_input"]')?.value) || 0;
+            const totalVoltage = voltageOcv + voltageSpread;
+
+            // 2. Get Charge/Discharge Scores (MANUAL INPUTS from Section 5.1)
+            let chargeScore = parseInt(document.getElementById('manual_score_charge')?.value) || 0;
+            let dischargeScore = parseInt(document.getElementById('manual_score_discharge')?.value) || 0;
+
+            // Enforce max limits (0-2)
+            if(chargeScore > 2) chargeScore = 2;
+            if(dischargeScore > 2) dischargeScore = 2;
+            if(chargeScore < 0) chargeScore = 0;
+            if(dischargeScore < 0) dischargeScore = 0;
+
+            // 3. Calculate Total
+            const totalScore = totalVoltage + chargeScore + dischargeScore;
+
+            // 4. Update the Display Text
+            const setText = (id, text) => {
+                const el = document.getElementById(id);
+                if(el) el.textContent = text;
+            };
+
+            setText('score_voltage', `${totalVoltage} / 4`);
+            document.getElementById('manual_score_charge').value = chargeScore; // Set the enforced value back
+            document.getElementById('manual_score_discharge').value = dischargeScore; // Set the enforced value back
+            setText('score_total', `${totalScore} / 8`);
+
+            // 5. Update Color Banding
+            document.querySelectorAll('#banding_list li').forEach(li => {
+                li.classList.remove('bg-indigo-100', 'ring-2', 'ring-indigo-500');
+                const range = li.getAttribute('data-range').split('-');
+                const min = parseInt(range[0]);
+                const max = parseInt(range[1]);
+
+                if (totalScore >= min && totalScore <= max) {
+                    li.classList.add('bg-indigo-100', 'ring-2', 'ring-indigo-500');
+                }
+            });
+
+            // 6. Automatic PASS/FAIL Selection
+            const overallPass = document.querySelector('input[name="overall_result_radio"][value="PASS"]');
+            const overallFail = document.querySelector('input[name="overall_result_radio"][value="FAIL"]');
+            
+            if (totalScore >= 5) {
+                if(overallPass) overallPass.checked = true;
+            } else {
+                if(overallFail) overallFail.checked = true;
+            }
+        }
+        
+        // Event Listeners for Scores/Capacity
         document.querySelectorAll('.score-button').forEach(btn => {
             btn.addEventListener('click', function() {
                 const parent = this.parentNode;
@@ -360,139 +471,184 @@
             updateScoreSummary();
         }));
         
-        const calcCap = () => {
-            const del = parseFloat(document.getElementById('ah_delivered_02c').value)||0;
-            const nom = parseFloat(document.getElementById('nominal_ah').value)||1;
-            const percentage = ((del / nom) * 100).toFixed(1);
-            document.getElementById('capacity_summary').innerHTML = `0.2C Capacity Delivered: <b>${del.toFixed(1)} Ah</b> of ${nom} Ah (${percentage}%)`;
-        };
-        document.getElementById('ah_delivered_02c').addEventListener('input', calcCap);
-        document.getElementById('nominal_ah').addEventListener('input', calcCap);
+        document.getElementById('ah_delivered_02c').addEventListener('input', updateCapacitySummary);
+        document.getElementById('nominal_ah').addEventListener('input', updateCapacitySummary);
 
 
-        // --- PDF GENERATION LOGIC ---
-        function generateCleanPDF() {
-            const statusDiv = document.getElementById('status_message');
-            statusDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700');
-            statusDiv.classList.add('bg-indigo-100', 'text-indigo-700');
-            statusDiv.querySelector('span').innerText = "Generating PDF...";
-            document.getElementById('loading_spinner').classList.remove('hidden');
-
-            // TARGET THE ISOLATED CONTAINER
-            const container = document.getElementById('content-to-capture'); 
-            const serialNumber = document.getElementById('serial_number').value || 'Unknown';
-
-            // 1. CLONE & STYLIZE THE REPORT CONTENT FOR PDF
-            const pdfContent = container.cloneNode(true);
-            pdfContent.id = 'pdf-clone';
+        // --- PDF PREPARATION & GENERATION (USING html2canvas/jsPDF) ---
+        
+        function prepareForPdf(container) {
+            const replacements = [];
             
-            pdfContent.style.position = 'fixed';
-            pdfContent.style.left = '-9999px';
-            pdfContent.style.top = '0';
-
-            pdfContent.classList.add('pdf-mode'); // Apply the PDF-specific CSS
-
-            // A. Replace input values with their static text/value
-            pdfContent.querySelectorAll('input:not([type="radio"]):not([type="file"]):not([type="hidden"]):not([readonly]), textarea, select').forEach(input => {
+            // 1. Replace Input Fields and Textareas with DIVs for visibility
+            const inputs = container.querySelectorAll('input:not([type="hidden"]), textarea, select');
+            inputs.forEach(input => {
+                if(input.type === 'file' || input.type === 'radio' || input.type === 'checkbox') return;
+                
                 let value = input.value;
-                if(input.tagName === 'SELECT' && input.options.length > 0 && input.selectedIndex > -1) {
+                 if(input.tagName === 'SELECT' && input.options.length > 0 && input.selectedIndex > -1) {
                     value = input.options[input.selectedIndex].text; 
                 }
                 
-                const valueSpan = document.createElement('span');
-                valueSpan.textContent = value || 'N/A';
-                valueSpan.className = 'input-replacement'; 
-                valueSpan.style.color = '#1f2937';
-                valueSpan.style.fontWeight = 'bold';
+                const div = document.createElement('div');
+                div.className = 'mt-1 block w-full text-lg font-bold text-black p-1 border-b border-gray-300'; 
+                div.textContent = value || 'N/A';
                 
-                input.parentNode.replaceChild(valueSpan, input);
+                input.style.display = 'none';
+                input.parentNode.insertBefore(div, input);
+                replacements.push({ el: input, replacement: div, type: 'input' });
             });
 
-            // B. Replace score buttons with static score text
-            pdfContent.querySelectorAll('.score-row').forEach(row => {
-                const scoreDiv = row.querySelector('[data-category]');
-                const scoreInputName = scoreDiv.getAttribute('data-category') + '_score_input';
-                const hiddenScoreInput = document.querySelector(`input[name="${scoreInputName}"]`); 
-                const scoreValue = hiddenScoreInput ? hiddenScoreInput.value : '0';
+            // 2. Handle Score Buttons & Radio Groups (Replace groups with text)
+            const scoreGroups = container.querySelectorAll('div[data-category]');
+            scoreGroups.forEach(group => {
+                let text = "";
+                let colorClass = "text-gray-500";
                 
-                let scoreText = 'Poor'; 
-                const selectedButton = document.querySelector(`.score-button[data-category="${scoreDiv.getAttribute('data-category')}"][data-score="${scoreValue}"]`);
-                if (selectedButton) {
-                    scoreText = selectedButton.innerText.replace(/\s\(\d\)/, '');
-                }
-
-                const scoreColor = scoreValue === '2' ? '#047857' : scoreValue === '1' ? '#d97706' : '#b91c1c';
-                
-                scoreDiv.innerHTML = `<span style="font-weight: bold; color: ${scoreColor}; font-size: 0.75rem;">${scoreText} (${scoreValue})</span>`;
-            });
-            
-            // C. Display Pass/Fail results as text 
-            pdfContent.querySelectorAll('.test-result-section, #overall_result .flex.space-x-4').forEach(container => {
-                const radioName = container.querySelector('input[type="radio"]')?.name;
-                if (!radioName) return;
-                
-                const checkedRadio = document.querySelector(`input[name="${radioName}"]:checked`);
-                
-                if (checkedRadio) {
-                    const resultValue = checkedRadio.value;
-                    const resultColor = resultValue === 'PASS' ? '#047857' : '#b91c1c';
+                // For custom radio groups (PASS/FAIL)
+                if(group.classList.contains('custom-radio-group')) {
+                     const originalGroup = document.querySelector(`div[data-category="${group.getAttribute('data-category')}"]`);
+                     const checkedRadio = originalGroup.querySelector('input[type="radio"]:checked');
                     
-                    if (container.classList.contains('test-result-section')) {
-                        container.innerHTML = `<span style="font-weight: 600; font-size: 0.875rem;">Result:</span> <span style="font-weight: bold; color: ${resultColor}; margin-left: 1rem;">${resultValue}</span>`;
-                    } else {
-                        container.parentNode.innerHTML = `<span class="font-bold text-gray-700">Final Result:</span><span style="font-weight: bold; color: ${resultColor}; margin-left: 1rem; font-size: 1.25rem;">${resultValue}</span>`;
+                     if(checkedRadio) {
+                         text = checkedRadio.value;
+                         if(text.includes('PASS')) colorClass = 'text-green-700 font-bold';
+                         else if(text.includes('FAIL')) colorClass = 'text-red-700 font-bold';
+                     }
+                } 
+                // For score buttons (Good/Acceptable/Poor)
+                else {
+                    const originalGroup = document.querySelector(`div[data-category="${group.getAttribute('data-category')}"]`);
+                    const selectedBtn = originalGroup.querySelector('.selected-score');
+                    const scoreInput = originalGroup.querySelector('input[type="hidden"]');
+                    
+                    if(selectedBtn) {
+                        text = selectedBtn.textContent.replace(/\s\(\d\)/, '');
+                        const scoreValue = scoreInput.value;
+                        if(scoreValue === '2') colorClass = 'text-green-700 font-bold';
+                        else if(scoreValue === '1') colorClass = 'text-yellow-700 font-bold';
+                        else if(scoreValue === '0') colorClass = 'text-red-700 font-bold';
                     }
                 }
+
+                if (text) {
+                    const div = document.createElement('div');
+                    div.className = `text-right text-lg ${colorClass}`;
+                    div.textContent = text;
+                    group.style.display = 'none';
+                    group.parentNode.insertBefore(div, group);
+                    replacements.push({ el: group, replacement: div, type: 'group' });
+                }
             });
 
+            // 3. Handle Overall Result Radio Group
+            const overallResultDiv = container.querySelector('#overall_result > div.custom-radio-group');
+            if(overallResultDiv) {
+                const originalRadio = document.querySelector('input[name="overall_result_radio"]:checked');
+                let resultText = "N/A";
+                let resultClass = "text-gray-500";
+                if(originalRadio) {
+                    resultText = originalRadio.value;
+                    resultClass = originalRadio.value === 'PASS' ? 'text-green-700 font-bold text-xl' : 'text-red-700 font-bold text-xl';
+                }
+                
+                const resultSpan = document.createElement('span');
+                resultSpan.className = resultClass;
+                resultSpan.textContent = resultText;
+                
+                overallResultDiv.style.display = 'none';
+                overallResultDiv.parentNode.insertBefore(resultSpan, overallResultDiv);
+                replacements.push({ el: overallResultDiv, replacement: resultSpan, type: 'group' });
+            }
 
-            // D. Get the capacity summary
-            const originalCapacitySummary = document.getElementById('capacity_summary').innerHTML;
-            pdfContent.querySelector('#capacity_summary').innerHTML = originalCapacitySummary;
+            // 4. Add Image Appendix Content
+            const appendix = container.querySelector('#image-appendix');
+            appendix.style.display = 'block';
+            appendix.innerHTML = '<h2 style="font-size: 24pt; font-weight: bold; margin-bottom: 20px;">Appendix: Evidence Photos</h2>';
 
-
-            // 2. BUILD THE IMAGE APPENDIX CONTENT 
-            const appendixDiv = pdfContent.querySelector('#image-appendix');
-            appendixDiv.style.display = 'none'; 
+            if(batteryPhotoDataUrl) {
+                appendix.innerHTML += `<h3 style="font-size: 16pt; margin-top: 20px; text-align: left; border-bottom: 1px solid #ccc; padding-bottom: 5px;">1. Battery Physical Photo</h3><img src="${batteryPhotoDataUrl}" style="max-width: 90%; height: auto; margin-top: 10px; display: block; margin-left: auto; margin-right: auto;">`;
+            }
+            if(ratingPhotoDataUrl) {
+                appendix.innerHTML += `<h3 style="font-size: 16pt; margin-top: 20px; text-align: left; border-bottom: 1px solid #ccc; padding-bottom: 5px;">2. Rating Screenshot (BMS App)</h3><img src="${ratingPhotoDataUrl}" style="max-width: 90%; height: auto; margin-top: 10px; display: block; margin-left: auto; margin-right: auto;">`;
+            }
             
-            // For future image embedding:
-            // const imageKeys = ['battery', 'rating', 'cell', 'bms'];
-            // imageKeys.forEach(key => { addImg(imageTitles[key], images[key]); });
-            
+            return replacements;
+        }
 
-            // 3. GENERATE PDF
-            document.body.appendChild(pdfContent);
-
-            const opt = {
-                margin:        0.5,
-                filename:      `BATT-24V-${serialNumber}.pdf`, 
-                image:         { type: 'jpeg', quality: 0.98 },
-                // scale: 3 is important for clarity
-                html2canvas:   { scale: 3, logging: false, useCORS: true, letterRendering: true }, 
-                jsPDF:         { unit: 'in', format: 'letter', orientation: 'portrait' }
-            };
-
-            html2pdf().set(opt).from(pdfContent).save().then(() => {
-                // Clean up the clone and status message
-                pdfContent.remove();
-                document.getElementById('loading_spinner').classList.add('hidden');
-                statusDiv.classList.add('hidden');
-            }).catch(error => {
-                console.error("PDF generation error:", error);
-                // Fail gracefully in the UI
-                document.getElementById('loading_spinner').classList.add('hidden');
-                statusDiv.querySelector('span').innerText = "Error generating PDF. Check console for details.";
-                statusDiv.classList.remove('bg-indigo-100', 'text-indigo-700');
-                statusDiv.classList.add('bg-red-100', 'text-red-700');
+        function restoreUi(replacements) {
+            replacements.forEach(item => {
+                if (item.replacement) {
+                    item.replacement.remove();
+                    item.el.style.display = '';
+                }
             });
+             document.querySelector('#image-appendix').style.display = 'none';
+        }
+
+
+        async function generatePDF() {
+            const { jsPDF } = window.jspdf; // Get the jsPDF module
+            const container = document.getElementById('report-content');
+            const pdfContainer = document.getElementById('pdf-container');
+            const serialNumber = document.getElementById('serial_number').value || 'Report';
+
+            showStatus("Preparing report...", false, true);
+            
+            // 1. Prepare UI for PDF capture
+            const replacements = prepareForPdf(container);
+            pdfContainer.classList.add('pdf-mode'); // Apply the critical white background class
+
+            // Delay to allow DOM changes to render
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+            
+            try {
+                // 2. Capture content using html2canvas
+                const canvas = await html2canvas(pdfContainer, {
+                    scale: 3, // Higher scale = better resolution
+                    useCORS: true, 
+                    logging: false,
+                    backgroundColor: '#ffffff' // Ensure white background at the canvas level
+                });
+
+                // 3. Create PDF
+                const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+
+                // 4. Save
+                pdf.save(`BATT-24V-${serialNumber}.pdf`);
+
+                showStatus("PDF generated successfully!", false, false);
+
+            } catch (error) {
+                console.error("Error generating PDF:", error);
+                showStatus(`Error generating PDF: ${error.message}`, true, false);
+            } finally {
+                // 5. Clean up
+                restoreUi(replacements);
+                pdfContainer.classList.remove('pdf-mode');
+                // Hide status after a short delay
+                setTimeout(() => document.getElementById('status_message').classList.add('hidden'), 3000);
+            }
         }
         
-        // Initial setup on load
+        // --- INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', () => {
              // Set default date to today
             document.getElementById('assessment_date').valueAsDate = new Date();
+            
+            // Set up image handlers
+            setupImageInput('photo_battery', 'preview_battery', (data) => batteryPhotoDataUrl = data);
+            setupImageInput('photo_rating', 'preview_rating', (data) => ratingPhotoDataUrl = data);
+
+            // Initial calculations
             updateScoreSummary(); 
-            calcCap(); 
+            updateCapacitySummary(); 
         });
     </script>
 </body>
