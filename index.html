@@ -8,8 +8,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <style>
-        /* Removed external font import ('Inter') */
-        body { font-family: sans-serif; background-color: #f3f4f6; } /* Changed to generic sans-serif */
+        /* FINAL AGGRESSIVE CSS: No external fonts, minimal styling */
+        body { font-family: sans-serif; background-color: #f3f4f6 !important; } /* Hard background */
         .report-section { border-bottom: 1px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 1.5rem; }
         .score-button { transition: all 0.2s; cursor: pointer; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
         .score-button:hover { opacity: 0.9; }
@@ -19,11 +19,13 @@
 
         /* --- PDF GENERATION STYLES (THE CORE FIXES) --- */
         .pdf-mode {
-            /* Fix 1: Force a white background for the cloned container */
+            /* Ensures no weird transforms or filters are inherited */
+            transform: none !important;
+            filter: none !important;
+            /* Force a white background for the cloned container */
             background-color: white !important;
-            /* Fix 2: Ensure all content is visible and nothing is clipped */
+            /* Ensure all content is visible and nothing is clipped */
             overflow: visible !important; 
-            /* Reset box shadows that can sometimes interfere */
             box-shadow: none !important; 
         }
         
@@ -73,7 +75,7 @@
         <div id="content-to-capture"> 
 
             <div class="flex items-center mb-6 border-b pb-4">
-                <img src="REVOV-TM-Logo-home.webp" alt="REVOV Logo" class="h-20 w-auto object-contain mr-6">
+                <img src="https://via.placeholder.com/100x80?text=REVOV+Logo" alt="REVOV Logo" class="h-20 w-auto object-contain mr-6">
                 <h1 class="text-3xl font-bold text-gray-800">24V Battery Assessment Report</h1>
             </div>
 
@@ -184,8 +186,8 @@
                             </div>
                             <div class="flex items-center space-x-4 border-t pt-3 test-result-section">
                                 <span class="text-sm font-semibold">Result:</span>
-                                <label><input type="radio" name="result_05c" value="PASS" class="mr-1"><span class="text-green-700 font-bold">PASS</span></label>
-                                <label><input type="radio" name="result_05c" value="FAIL" class="mr-1"><span class="text-red-700 font-bold">FAIL</span></label>
+                                <label><input type="radio" name="result_05c" value="PASS"><span class="ml-2 text-green-700 font-bold">PASS</span></label>
+                                <label><input type="radio" name="result_05c" value="FAIL"><span class="ml-2 text-red-700 font-bold">FAIL</span></label>
                             </div>
                         </div>
                     </div>
@@ -454,8 +456,9 @@
             const appendixDiv = pdfContent.querySelector('#image-appendix');
             appendixDiv.style.display = 'none'; 
 
+            
+            // NOTE: If this fix works, we can re-enable image embedding by uncommenting this block:
             /*
-            // RE-ENABLE THIS SECTION IF THE MAIN CONTENT GENERATES CORRECTLY
             const imageKeys = ['battery', 'rating', 'cell', 'bms'];
 
             imageKeys.forEach(key => {
