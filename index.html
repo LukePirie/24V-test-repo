@@ -17,7 +17,7 @@
         .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-top: 4px solid #fff; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* CRUCIAL FIX: Styles to make inputs look like static text in the PDF without destroying the layout */
+        /* --- PDF GENERATION STYLES (FIXED) --- */
         .pdf-mode input:not([type="radio"]):not([type="file"]):not([type="hidden"]):not([readonly]), 
         .pdf-mode textarea,
         .pdf-mode select {
@@ -28,17 +28,26 @@
             padding-right: 0 !important;
             color: #1f2937 !important; 
             font-weight: bold !important;
-            /* Ensures select value is visible */
             -webkit-appearance: none !important; 
             -moz-appearance: none !important;
             appearance: none !important;
+        }
+        
+        /* Ensures replaced span maintains block layout and spacing */
+        .pdf-mode label > .input-replacement,
+        .pdf-mode label > span:last-child {
+            display: block !important;
+            margin-top: 0.25rem; 
+        }
+        
+        .pdf-mode #capacity_summary b {
+            font-weight: bold; 
         }
 
         /* Hide all interactive elements in PDF mode */
         .pdf-mode .score-button,
         .pdf-mode .file-input,
         .pdf-mode .preview-box,
-        /* FIX: Correctly hide the radio button itself */
         .pdf-mode input[type="radio"], 
         .pdf-mode #status_message,
         .pdf-mode .test-result-section label,
@@ -46,23 +55,14 @@
         .pdf-mode input[readonly] {
             display: none !important;
         }
-        
-        /* FIX: Ensures the visible label text is not hidden in the PDF for radio buttons */
-        /* It was using input[type="radio"] + span which hid the visible text. This is now handled in JS by replacing the radio with text. */
-        
-        /* Ensure the replaced spans maintain layout */
-        .pdf-mode .input-replacement {
-            display: block; 
-            min-height: 1.5rem; /* Ensure minimal height for layout */
-        }
     </style>
 </head>
 <body class="p-4 md:p-8">
 
-    <div class="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl p-6 md:p-10">
+    <div class="max-w-4xl mx-auto bg-white shadow-2xl rounded-xl p-6 md:p-10" id="pdf-container">
 
         <div class="flex items-center mb-6 border-b pb-4">
-            <img src="REVOV-TM-Logo-home.webp" alt="REVOV Logo" class="h-20 w-auto object-contain mr-6" onerror="this.style.display='none'"> 
+            <img src="https://via.placeholder.com/100x80?text=REVOV+Logo" alt="REVOV Logo" class="h-20 w-auto object-contain mr-6">
             <h1 class="text-3xl font-bold text-gray-800">24V Battery Assessment Report</h1>
         </div>
 
@@ -182,7 +182,7 @@
                     0.2C Capacity Delivered: 0.0 Ah
                 </div>
             </div>
-            
+
             <div class="report-section">
                 <h2 class="text-2xl font-semibold text-indigo-700 mb-4">5. Summary & Evaluation</h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -324,9 +324,8 @@
         document.querySelectorAll('.score-button').forEach(btn => {
             btn.addEventListener('click', function() {
                 const parent = this.parentNode;
-                parent.querySelectorAll('.score-button').forEach(b => b.classList.remove('selected-score', 'ring-2'));
-                this.classList.add('selected-score', 'ring-2');
-                this.classList.add('ring-indigo-500'); // Add ring for visibility
+                parent.querySelectorAll('.score-button').forEach(b => b.classList.remove('selected-score', 'ring-2', 'ring-indigo-500'));
+                this.classList.add('selected-score', 'ring-2', 'ring-indigo-500');
                 parent.querySelector('input[type="hidden"]').value = this.getAttribute('data-score');
                 updateScoreSummary();
             });
@@ -359,14 +358,14 @@
             statusDiv.querySelector('span').innerText = "Generating PDF...";
             document.getElementById('loading_spinner').classList.remove('hidden');
 
-            const container = document.getElementById('report-content');
+            // FIXED: Target the main container ID
+            const container = document.getElementById('pdf-container'); 
             const serialNumber = document.getElementById('serial_number').value || 'Unknown';
 
             // 1. CLONE & STYLIZE THE REPORT CONTENT FOR PDF
             const pdfContent = container.cloneNode(true);
             pdfContent.id = 'pdf-clone';
             
-            // Move off-screen instead of setting visibility: hidden
             pdfContent.style.position = 'fixed';
             pdfContent.style.left = '-9999px';
             pdfContent.style.top = '0';
@@ -377,13 +376,14 @@
             pdfContent.querySelectorAll('input:not([type="radio"]):not([type="file"]):not([type="hidden"]):not([readonly]), textarea, select').forEach(input => {
                 let value = input.value;
                 if(input.tagName === 'SELECT' && input.options.length > 0 && input.selectedIndex > -1) {
-                    value = input.options[input.selectedIndex].text;
+                    // Read selected text instead of value for select tags
+                    value = input.options[input.selectedIndex].text; 
                 }
                 
-                // FIX: Create a span to replace the input/textarea/select
+                // Create a span to replace the input/textarea/select
                 const valueSpan = document.createElement('span');
                 valueSpan.textContent = value || 'N/A';
-                valueSpan.className = 'input-replacement'; // Added class for easier styling and layout maintenance
+                valueSpan.className = 'input-replacement'; 
                 valueSpan.style.color = '#1f2937';
                 valueSpan.style.fontWeight = 'bold';
                 
@@ -395,11 +395,11 @@
             pdfContent.querySelectorAll('.score-row').forEach(row => {
                 const scoreDiv = row.querySelector('[data-category]');
                 const scoreInputName = scoreDiv.getAttribute('data-category') + '_score_input';
-                const hiddenScoreInput = document.querySelector(`input[name="${scoreInputName}"]`); // Read from original DOM
+                // Read from original DOM
+                const hiddenScoreInput = document.querySelector(`input[name="${scoreInputName}"]`); 
                 const scoreValue = hiddenScoreInput ? hiddenScoreInput.value : '0';
                 
                 let scoreText = 'Poor'; 
-                // Find the text from the original document's selected button
                 const selectedButton = document.querySelector(`.score-button[data-category="${scoreDiv.getAttribute('data-category')}"][data-score="${scoreValue}"]`);
                 if (selectedButton) {
                     scoreText = selectedButton.innerText.replace(/\s\(\d\)/, '');
@@ -407,13 +407,11 @@
 
                 const scoreColor = scoreValue === '2' ? '#047857' : scoreValue === '1' ? '#d97706' : '#b91c1c';
                 
-                // Replace the entire button container with the styled score text
                 scoreDiv.innerHTML = `<span style="font-weight: bold; color: ${scoreColor}; font-size: 0.75rem;">${scoreText} (${scoreValue})</span>`;
             });
             
-            // C. Display Pass/Fail results as text (fixes the blank space from hiding labels)
+            // C. Display Pass/Fail results as text 
             pdfContent.querySelectorAll('.test-result-section, #overall_result .flex.space-x-4').forEach(container => {
-                // Get the checked radio button's value from the *original* form
                 const radioName = container.querySelector('input[type="radio"]')?.name;
                 if (!radioName) return;
                 
@@ -424,7 +422,6 @@
                     const resultColor = resultValue === 'PASS' ? '#047857' : '#b91c1c';
                     
                     if (container.classList.contains('test-result-section')) {
-                        // Replace the entire contents of the flex container after the "Result:" span
                         container.innerHTML = `<span style="font-weight: 600; font-size: 0.875rem;">Result:</span> <span style="font-weight: bold; color: ${resultColor}; margin-left: 1rem;">${resultValue}</span>`;
                     } else {
                         // Handle overall result container
@@ -434,40 +431,35 @@
             });
 
 
-            // D. Get the capacity summary (it's dynamic text, so just ensure it's up to date)
+            // D. Get the capacity summary
             const originalCapacitySummary = document.getElementById('capacity_summary').innerHTML;
             pdfContent.querySelector('#capacity_summary').innerHTML = originalCapacitySummary;
 
 
             // 2. BUILD THE IMAGE APPENDIX CONTENT
-            const appendixDiv = document.getElementById('image-appendix');
-            const appendixClone = appendixDiv.cloneNode(true);
-            appendixClone.style.display = 'block';  
-            appendixClone.innerHTML = appendixDiv.innerHTML; 
+            const appendixDiv = pdfContent.querySelector('#image-appendix');
+            appendixDiv.style.display = 'block'; 
 
             const imageKeys = ['battery', 'rating', 'cell', 'bms'];
 
-            // Add Images to the Appendix
+            // Function to add images to the appendix
             const addImg = (title, data) => {
                 if(data) {
-                    appendixClone.innerHTML += `
+                    // Check image size/type if issues persist, but this is the standard reliable method
+                    appendixDiv.innerHTML += `
                         <div style="page-break-before: always; padding-top: 30px; font-family: 'Inter', sans-serif;">
                             <div style="margin-bottom: 50px; text-align: center; page-break-inside: avoid;">
                                 <div style="background:#333; color:#fff; padding: 10px 8px; font-weight:bold; margin-bottom:15px; font-size: 14pt; border-radius: 5px;">${title}</div>
-                                <img src="${data}" style="max-width: 95%; height: auto; max-height: 9.5in; border: 3px solid #ccc; display: block; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                <img src="${data}" style="max-width: 95%; height: auto; max-height: 9.5in; border: 3px solid #ccc; display: block; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" crossorigin="anonymous">
                             </div>
                         </div>
                     `;
                 }
             };
             
-            // Add images, each on a new page for maximum clarity and no cut-offs
             imageKeys.forEach(key => {
                 addImg(imageTitles[key], images[key]);
             });
-
-            // Append the styled appendix to the main report clone
-            pdfContent.appendChild(appendixClone);
 
             // 3. GENERATE PDF
             document.body.appendChild(pdfContent);
@@ -476,6 +468,7 @@
                 margin:        0.5,
                 filename:      `BATT-24V-${serialNumber}.pdf`, 
                 image:         { type: 'jpeg', quality: 0.98 },
+                // scale: 3 is important for clarity
                 html2canvas:   { scale: 3, logging: false, useCORS: true, letterRendering: true }, 
                 jsPDF:         { unit: 'in', format: 'letter', orientation: 'portrait' }
             };
@@ -489,7 +482,7 @@
                 console.error("PDF generation error:", error);
                 // Fail gracefully in the UI
                 document.getElementById('loading_spinner').classList.add('hidden');
-                statusDiv.querySelector('span').innerText = "Error generating PDF. Please ensure all required fields are filled and try again.";
+                statusDiv.querySelector('span').innerText = "Error generating PDF. Check console for details. (Possible image/CORS issue)";
                 statusDiv.classList.remove('bg-indigo-100', 'text-indigo-700');
                 statusDiv.classList.add('bg-red-100', 'text-red-700');
             });
@@ -499,8 +492,8 @@
         document.addEventListener('DOMContentLoaded', () => {
              // Set default date to today
             document.getElementById('assessment_date').valueAsDate = new Date();
-            updateScoreSummary(); // Calculate initial scores
-            calcCap(); // Calculate initial capacity
+            updateScoreSummary(); 
+            calcCap(); 
         });
     </script>
 </body>
